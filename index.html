@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Teleprompter">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f0d14">
+<link rel="apple-touch-icon" href="icone.png">
+<link rel="icon" href="icone.png">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Teleprompter Flutuante</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Manrope:wght@400;500;600;700;800&display=swap">
+<style>
+/* Layout: app de celular em coluna única; prévia no topo (o que vai flutuar), roteiro, ajustes e o botão de gerar.
+   Visual escuro fixo, como uma tela de teleprompter de estúdio, com o rosa do app original. */
+:root {
+  --bg: #0f0d14;
+  --panel: #19161f;
+  --panel-2: #221e2a;
+  --line: #322c3d;
+  --ink: #f4f0f7;
+  --muted: #a69cb3;
+  --rosa: #ef5da8;
+  --lilas: #8d6bf2;
+  --ok: #5fd39a;
+  --erro: #ff7a70;
+  --display: "Bricolage Grotesque", "SF Pro Display", system-ui, sans-serif;
+  --body: "Manrope", -apple-system, system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 56px;
+}
+.app { max-width: 560px; margin: 0 auto; display: grid; gap: 16px; }
+h1, h2 { font-family: var(--display); margin: 0; line-height: 1.1; text-wrap: balance; }
+p { margin: 0; }
+header { display: grid; gap: 6px; }
+header h1 { font-size: 32px; font-weight: 800; letter-spacing: -.02em; }
+header h1 span { background: linear-gradient(90deg, var(--rosa), var(--lilas)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+header p { color: var(--muted); font-size: 15px; }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.card h2 { font-size: 18px; }
+.row { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.muted { color: var(--muted); font-size: 13px; }
+
+canvas.preview { width: 100%; height: auto; display: block; border-radius: 14px; background: #000; }
+.controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+button {
+  font: 700 15px/1.2 var(--body); color: var(--ink); background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 14px; padding: 12px 10px; cursor: pointer; touch-action: manipulation;
+}
+button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 3px solid color-mix(in srgb, var(--rosa) 70%, transparent); outline-offset: 2px; }
+button[disabled] { opacity: .5; cursor: default; }
+.big {
+  width: 100%; border: 0; color: #fff; font-size: 17px; padding: 16px;
+  background: linear-gradient(90deg, var(--rosa), var(--lilas));
+}
+.soft { color: var(--rosa); }
+
+textarea {
+  width: 100%; min-height: 220px; resize: vertical; font: 500 16px/1.55 var(--body); color: var(--ink);
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 14px; padding: 12px;
+}
+.field { display: grid; gap: 6px; }
+.field .row label { font-weight: 700; font-size: 15px; }
+.val { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 14px; }
+input[type=range] { width: 100%; accent-color: var(--rosa); }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: var(--panel-2); border-radius: 12px; padding: 4px; }
+.seg button { border: 0; background: transparent; padding: 9px; border-radius: 9px; }
+.seg button[aria-pressed="true"] { background: var(--rosa); color: #fff; }
+.seg3 { grid-template-columns: repeat(3, 1fr); }
+.seg3 button { line-height: 1.2; }
+.seg3 small { font-weight: 600; font-size: 11px; opacity: .85; }
+.preview-box { display: grid; place-items: center; background: #000; border-radius: 14px; overflow: hidden; }
+canvas.preview.deitado { width: auto; max-width: 100%; max-height: 62vh; border-radius: 0; }
+/* Celular deitado: a página vira duas colunas para aproveitar a tela larga */
+@media (orientation: landscape) and (min-width: 640px) {
+  .app { max-width: 1100px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  .app > header { grid-column: 1 / -1; }
+  .app > .card:first-of-type { position: sticky; top: max(12px, env(safe-area-inset-top, 0px)); }
+  textarea { min-height: 160px; }
+}
+.check { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 700; }
+.check input { width: 22px; height: 22px; accent-color: var(--rosa); }
+
+.bar { height: 8px; background: var(--panel-2); border-radius: 99px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--rosa), var(--lilas)); transition: width .15s; }
+.status { font-size: 14px; color: var(--muted); min-height: 1.4em; }
+.status.ok { color: var(--ok); font-weight: 700; }
+.status.erro { color: var(--erro); font-weight: 700; }
+video { width: 100%; border-radius: 14px; background: #000; display: block; }
+.actions { display: grid; gap: 8px; }
+
+ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; display: grid; gap: 10px; }
+ol.steps li { counter-increment: s; display: grid; grid-template-columns: 26px 1fr; gap: 10px; font-size: 15px; }
+ol.steps li::before {
+  content: counter(s); width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  font-weight: 800; font-size: 13px; color: #fff; background: linear-gradient(135deg, var(--rosa), var(--lilas));
+}
+.tip { font-size: 14px; color: var(--muted); background: var(--panel-2); border-radius: 12px; padding: 10px 12px; }
+.tip b { color: var(--ink); }
+</style>
+
+<div class="app">
+  <header>
+    <h1>Teleprompter <span>Flutuante</span></h1>
+    <p>Cole seu roteiro, gere o vídeo e deixe o texto rolando numa janelinha por cima do TikTok. A janelinha não aparece na gravação.</p>
+  </header>
+
+  <section class="card" aria-labelledby="t-previa">
+    <div class="row"><h2 id="t-previa">Prévia da janelinha</h2><span class="muted" id="duracao">—</span></div>
+    <div class="preview-box"><canvas class="preview" id="previa" width="720" height="288" aria-label="Prévia do texto rolando"></canvas></div>
+    <div class="controls">
+      <button type="button" id="voltar">↺ Início</button>
+      <button type="button" id="tocar" class="soft">▶ Rolar</button>
+      <button type="button" id="avancar">+10 s</button>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="t-roteiro">
+    <div class="row"><h2 id="t-roteiro">Seu roteiro</h2><button type="button" id="limpar" style="padding:8px 12px">Limpar</button></div>
+    <textarea id="roteiro" aria-label="Texto do roteiro"></textarea>
+    <span class="muted" id="palavras">0 palavras</span>
+  </section>
+
+  <section class="card" aria-labelledby="t-ajustes">
+    <h2 id="t-ajustes">Ajustes</h2>
+    <div class="field">
+      <div class="row"><label for="vel">Velocidade</label><span class="val" id="velVal"></span></div>
+      <input type="range" id="vel" min="1" max="20" step="1">
+    </div>
+    <div class="field">
+      <div class="row"><label for="letra">Tamanho da letra</label><span class="val" id="letraVal"></span></div>
+      <input type="range" id="letra" min="26" max="80" step="1">
+    </div>
+    <div class="field">
+      <div class="row"><span style="font-weight:700">Formato da janelinha</span></div>
+      <div class="seg" role="group" aria-label="Formato da janelinha">
+        <button type="button" data-formato="largo">Largo</button>
+        <button type="button" data-formato="compacto">Compacto</button>
+      </div>
+    </div>
+    <div class="field">
+      <div class="row"><span style="font-weight:700">Como você vai segurar o celular</span></div>
+      <div class="seg seg3" role="group" aria-label="Posição do celular">
+        <button type="button" data-orient="empe">📱 Em pé</button>
+        <button type="button" data-orient="esq">Deitado<br><small>câmera à esquerda</small></button>
+        <button type="button" data-orient="dir">Deitado<br><small>câmera à direita</small></button>
+      </div>
+      <p class="muted" id="orientDica"></p>
+    </div>
+    <label class="check" for="espelhar">Espelhar texto <input type="checkbox" id="espelhar"></label>
+  </section>
+
+  <section class="card" aria-labelledby="t-gerar">
+    <h2 id="t-gerar">Vídeo para flutuar</h2>
+    <button type="button" class="big" id="gerar">Gerar vídeo do roteiro</button>
+    <div class="bar" aria-hidden="true"><i id="barra"></i></div>
+    <p class="status" id="status" role="status">Leva poucos segundos. Sempre que mudar o texto ou a velocidade, gere de novo.</p>
+    <div class="actions" id="prontos" hidden>
+      <video id="video" playsinline muted controls aria-label="Vídeo do roteiro"></video>
+      <button type="button" class="big" id="flutuar">Flutuar por cima dos apps</button>
+      <button type="button" id="salvar">Salvar vídeo no celular</button>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="t-como">
+    <h2 id="t-como">Como usar com o TikTok</h2>
+    <ol class="steps">
+      <li>Cole o roteiro, ajuste a velocidade e a letra, e confira na prévia.</li>
+      <li>Toque em <b>Gerar vídeo do roteiro</b>.</li>
+      <li>Toque em <b>Flutuar por cima dos apps</b>. O vídeo vira uma janelinha.</li>
+      <li>Abra o TikTok. Arraste a janelinha para perto da câmera de selfie. Dá para aumentar com dois dedos.</li>
+      <li>Toque no ▶ da janelinha e comece a gravar. O vídeo começa com uma contagem 3, 2, 1.</li>
+    </ol>
+    <p class="tip"><b>Se o botão Flutuar não funcionar:</b> toque em <b>Salvar vídeo no celular</b>, abra o vídeo no app <b>Fotos</b> ou <b>Arquivos</b>, dê play e toque no ícone da janelinha flutuante (o quadradinho com a seta). Depois abra o TikTok.</p>
+  </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/build/mp4-muxer.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const FPS = 30;
+  const ESPERA = 3;      // segundos de contagem antes de rolar
+  const FIM = 2;         // segundos parado no final
+  const LEITURA = 0.32;  // linha de leitura a 32% do topo
+  const FORMATOS = { largo: [720, 288], compacto: [640, 480] };
+  const EXEMPLO = "Oi, gente! Esse é o seu teleprompter flutuante.\n\nCole aqui o roteiro do seu vídeo, gere o vídeo e toque em Flutuar. Depois abra o TikTok.\n\nA janelinha fica por cima de tudo e não aparece na gravação.\n\nDeixe a janelinha perto da câmera para o olhar parecer natural.\n\nBoa gravação!";
+
+  // ---------- Ajustes salvos no aparelho ----------
+  const padrao = { roteiro: EXEMPLO, vel: 6, letra: 44, formato: "largo", espelhar: false, orient: "empe" };
+  let cfg = { ...padrao };
+  try { cfg = { ...padrao, ...JSON.parse(localStorage.getItem("teleprompter") || "{}") }; } catch (e) {}
+  const salvarCfg = () => { try { localStorage.setItem("teleprompter", JSON.stringify(cfg)); } catch (e) {} };
+
+  const pxPorSeg = () => cfg.letra * 0.22 * cfg.vel; // velocidade proporcional ao tamanho da letra
+
+  // ---------- Layout do texto ----------
+  let layout = null;
+  function montarLayout() {
+    const [W, H] = FORMATOS[cfg.formato];
+    const c = document.createElement("canvas").getContext("2d");
+    const fonte = `800 ${cfg.letra}px Manrope, -apple-system, system-ui, sans-serif`;
+    c.font = fonte;
+    const largura = W - 70;
+    const lh = Math.round(cfg.letra * 1.28);
+    const linhas = [];
+    let y = 0;
+    const texto = cfg.roteiro.trim() || "Cole o seu roteiro aqui embaixo";
+    for (const par of texto.split(/\n/)) {
+      if (!par.trim()) { y += lh * 0.5; continue; }
+      let atual = "";
+      for (const palavra of par.trim().split(/\s+/)) {
+        const teste = atual ? atual + " " + palavra : palavra;
+        if (c.measureText(teste).width > largura && atual) { linhas.push({ t: atual, y }); y += lh; atual = palavra; }
+        else atual = teste;
+      }
+      if (atual) { linhas.push({ t: atual, y }); y += lh; }
+    }
+    const rolagem = Math.max(0, (linhas.length ? linhas[linhas.length - 1].y : 0));
+    const segRolando = rolagem / pxPorSeg();
+    layout = { W, H, fonte, lh, linhas, rolagem, duracao: ESPERA + segRolando + FIM };
+  }
+
+  // Desenha um quadro no instante t (segundos)
+  function desenhar(ctx, t) {
+    const { W, H, fonte, lh, linhas, rolagem, duracao } = layout;
+    const desloc = Math.min(rolagem, Math.max(0, (t - ESPERA) * pxPorSeg()));
+    ctx.save();
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, W, H);
+    if (cfg.espelhar) { ctx.translate(W, 0); ctx.scale(-1, 1); }
+
+    const yLeitura = H * LEITURA;
+    // faixa de leitura
+    ctx.fillStyle = "rgba(239,93,168,0.16)";
+    ctx.fillRect(0, yLeitura - lh * 0.62, W, lh * 1.24);
+    // seta
+    ctx.fillStyle = "#ef5da8";
+    ctx.beginPath(); ctx.moveTo(8, yLeitura - 13); ctx.lineTo(28, yLeitura); ctx.lineTo(8, yLeitura + 13); ctx.closePath(); ctx.fill();
+
+    ctx.font = fonte;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#fff";
+    for (const l of linhas) {
+      const y = yLeitura + l.y - desloc;
+      if (y < -lh || y > H + lh) continue;
+      ctx.fillText(l.t, W / 2, y);
+    }
+
+    // esmaece topo e rodapé
+    let g = ctx.createLinearGradient(0, 0, 0, H * 0.2);
+    g.addColorStop(0, "rgba(0,0,0,1)"); g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H * 0.2);
+    g = ctx.createLinearGradient(0, H * 0.84, 0, H);
+    g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, "rgba(0,0,0,1)");
+    ctx.fillStyle = g; ctx.fillRect(0, H * 0.84, W, H * 0.16);
+
+    // contagem 3, 2, 1
+    if (t < ESPERA) {
+      const n = Math.ceil(ESPERA - t);
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = "#ef5da8";
+      ctx.font = `800 ${Math.round(H * 0.5)}px Manrope, system-ui, sans-serif`;
+      ctx.fillText(String(n), W / 2, H / 2);
+    }
+    // barra de progresso
+    ctx.fillStyle = "#ef5da8";
+    ctx.fillRect(0, H - 6, W * Math.min(1, t / duracao), 6);
+    ctx.restore();
+  }
+
+  // ---------- Celular deitado ----------
+  // O TikTok fica sempre "em pé" na tela, mesmo com o celular deitado. Então, para o texto
+  // ficar certinho de ler com o celular na horizontal, o próprio vídeo é girado 90°.
+  const deitado = () => cfg.orient !== "empe";
+  const tamSaida = () => (deitado() ? [layout.H, layout.W] : [layout.W, layout.H]);
+  let base = null;
+  function quadro(ctx, t) {
+    if (!deitado()) return desenhar(ctx, t);
+    const { W, H } = layout;
+    if (!base || base.width !== W || base.height !== H) {
+      base = document.createElement("canvas");
+      base.width = W; base.height = H;
+    }
+    desenhar(base.getContext("2d"), t);
+    ctx.save();
+    if (cfg.orient === "esq") { ctx.translate(H, 0); ctx.rotate(Math.PI / 2); }
+    else { ctx.translate(0, W); ctx.rotate(-Math.PI / 2); }
+    ctx.drawImage(base, 0, 0);
+    ctx.restore();
+  }
+
+  // ---------- Prévia ----------
+  const previa = $("previa");
+  const pctx = previa.getContext("2d");
+  let tPrev = 0, rodando = false, ultimo = 0;
+  function ajustarPrevia() {
+    const [sw, sh] = tamSaida();
+    previa.width = sw; previa.height = sh;
+    previa.classList.toggle("deitado", deitado());
+    tPrev = Math.min(tPrev, layout.duracao);
+    quadro(pctx, tPrev);
+    const d = layout.duracao;
+    $("duracao").textContent = `vídeo de ${Math.floor(d / 60)}:${String(Math.round(d % 60)).padStart(2, "0")}`;
+  }
+  function loop(ts) {
+    if (!rodando) return;
+    const dt = ultimo ? (ts - ultimo) / 1000 : 0;
+    ultimo = ts;
+    tPrev += dt;
+    if (tPrev >= layout.duracao) { tPrev = layout.duracao; parar(); }
+    quadro(pctx, tPrev);
+    if (rodando) requestAnimationFrame(loop);
+  }
+  function parar() { rodando = false; $("tocar").textContent = "▶ Rolar"; }
+  $("tocar").onclick = () => {
+    if (rodando) return parar();
+    if (tPrev >= layout.duracao) tPrev = 0;
+    rodando = true; ultimo = 0; $("tocar").textContent = "❚❚ Pausar";
+    requestAnimationFrame(loop);
+  };
+  $("voltar").onclick = () => { tPrev = 0; quadro(pctx, 0); };
+  $("avancar").onclick = () => { tPrev = Math.min(layout.duracao, tPrev + 10); quadro(pctx, tPrev); };
+
+  // ---------- Controles ----------
+  const roteiro = $("roteiro");
+  function atualizar(mudouVideo = true) {
+    montarLayout();
+    ajustarPrevia();
+    const n = (cfg.roteiro.match(/\S+/g) || []).length;
+    $("palavras").textContent = `${n} palavras`;
+    $("velVal").textContent = `${cfg.vel} de 20`;
+    $("letraVal").textContent = `${cfg.letra} px`;
+    document.querySelectorAll("[data-formato]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.formato === cfg.formato)));
+    document.querySelectorAll("[data-orient]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.orient === cfg.orient)));
+    $("orientDica").textContent = deitado()
+      ? "O texto aparece de lado aqui na prévia de propósito. Com o celular deitado e o TikTok aberto, ele fica certinho para ler."
+      : "Use este com o celular em pé, do jeito normal.";
+    salvarCfg();
+    if (mudouVideo && videoUrl) {
+      $("status").className = "status";
+      $("status").textContent = "Você mudou algo. Toque em Gerar de novo para atualizar o vídeo.";
+    }
+  }
+  roteiro.value = cfg.roteiro;
+  $("vel").value = cfg.vel;
+  $("letra").value = cfg.letra;
+  $("espelhar").checked = cfg.espelhar;
+  roteiro.addEventListener("input", () => { cfg.roteiro = roteiro.value; atualizar(); });
+  $("vel").addEventListener("input", (e) => { cfg.vel = +e.target.value; atualizar(); });
+  $("letra").addEventListener("input", (e) => { cfg.letra = +e.target.value; atualizar(); });
+  $("espelhar").addEventListener("change", (e) => { cfg.espelhar = e.target.checked; atualizar(); });
+  document.querySelectorAll("[data-formato]").forEach((b) => (b.onclick = () => { cfg.formato = b.dataset.formato; atualizar(); }));
+  document.querySelectorAll("[data-orient]").forEach((b) => (b.onclick = () => { cfg.orient = b.dataset.orient; atualizar(); }));
+  $("limpar").onclick = () => { roteiro.value = ""; cfg.roteiro = ""; atualizar(); roteiro.focus(); };
+
+  // ---------- Gerar o vídeo ----------
+  let videoUrl = null, videoBlob = null, videoNome = "teleprompter.mp4";
+  const status = (txt, cls = "") => { $("status").textContent = txt; $("status").className = "status " + cls; };
+  const barra = (p) => ($("barra").style.width = Math.round(p * 100) + "%");
+
+  async function gerarWebCodecs() {
+    const { duracao } = layout;
+    const [W, H] = tamSaida();
+    const codec = "avc1.42001f";
+    const conf = { codec, width: W, height: H, bitrate: 900000, framerate: FPS };
+    if (!(await VideoEncoder.isConfigSupported(conf)).supported) throw new Error("sem suporte");
+    const muxer = new Mp4Muxer.Muxer({
+      target: new Mp4Muxer.ArrayBufferTarget(),
+      video: { codec: "avc", width: W, height: H, frameRate: FPS },
+      fastStart: "in-memory",
+    });
+    let erro = null;
+    const enc = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, meta), error: (e) => (erro = e) });
+    enc.configure(conf);
+    const tela = new OffscreenCanvas(W, H);
+    const ctx = tela.getContext("2d");
+    const total = Math.ceil(duracao * FPS);
+    for (let i = 0; i < total; i++) {
+      if (erro) throw erro;
+      quadro(ctx, i / FPS);
+      const vf = new VideoFrame(tela, { timestamp: Math.round((i * 1e6) / FPS), duration: Math.round(1e6 / FPS) });
+      enc.encode(vf, { keyFrame: i % (FPS * 2) === 0 });
+      vf.close();
+      if (enc.encodeQueueSize > 8) await new Promise((r) => setTimeout(r, 0));
+      if (i % 15 === 0) { barra(i / total); await new Promise((r) => setTimeout(r, 0)); }
+    }
+    await enc.flush();
+    if (erro) throw erro;
+    muxer.finalize();
+    return new Blob([muxer.target.buffer], { type: "video/mp4" });
+  }
+
+  // Plano B (aparelhos sem WebCodecs): grava a prévia em tempo real.
+  async function gerarTempoReal() {
+    const { duracao } = layout;
+    const [W, H] = tamSaida();
+    const tela = document.createElement("canvas");
+    tela.width = W; tela.height = H;
+    const ctx = tela.getContext("2d");
+    const tipo = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm"].find((t) => MediaRecorder.isTypeSupported(t)) || "";
+    const rec = new MediaRecorder(tela.captureStream(FPS), tipo ? { mimeType: tipo, videoBitsPerSecond: 900000 } : undefined);
+    const partes = [];
+    rec.ondataavailable = (e) => e.data.size && partes.push(e.data);
+    const fim = new Promise((r) => (rec.onstop = r));
+    rec.start(500);
+    const inicio = performance.now();
+    await new Promise((resolve) => {
+      function passo() {
+        const t = (performance.now() - inicio) / 1000;
+        quadro(ctx, Math.min(t, duracao));
+        barra(t / duracao);
+        status(`Gerando em tempo real… ${Math.min(100, Math.round((t / duracao) * 100))}% (este aparelho não tem o modo rápido)`);
+        if (t >= duracao) resolve(); else requestAnimationFrame(passo);
+      }
+      passo();
+    });
+    rec.stop();
+    await fim;
+    const t = rec.mimeType || tipo || "video/webm";
+    videoNome = t.includes("mp4") ? "teleprompter.mp4" : "teleprompter.webm";
+    return new Blob(partes, { type: t.split(";")[0] });
+  }
+
+  $("gerar").onclick = async () => {
+    parar();
+    $("gerar").disabled = true;
+    barra(0);
+    status("Gerando o vídeo… não saia desta tela.");
+    try {
+      try {
+        if (typeof VideoEncoder === "undefined" || typeof Mp4Muxer === "undefined") throw new Error("sem modo rápido");
+        videoBlob = await gerarWebCodecs();
+        videoNome = "teleprompter.mp4";
+      } catch (e) {
+        videoBlob = await gerarTempoReal();
+      }
+      if (videoUrl) URL.revokeObjectURL(videoUrl);
+      videoUrl = URL.createObjectURL(videoBlob);
+      const v = $("video");
+      v.src = videoUrl;
+      v.load();
+      $("prontos").hidden = false;
+      barra(1);
+      const mb = (videoBlob.size / 1048576).toFixed(1);
+      status(`✅ Vídeo pronto (${mb} MB). Agora toque em Flutuar por cima dos apps.`, "ok");
+    } catch (e) {
+      status("Não consegui gerar o vídeo neste aparelho. Tente pelo Safari (iPhone) ou Chrome (Android) atualizados.", "erro");
+    } finally {
+      $("gerar").disabled = false;
+    }
+  };
+
+  // ---------- Flutuar ----------
+  $("flutuar").onclick = async () => {
+    const v = $("video");
+    v.muted = true; // sem som: não atrapalha a gravação do TikTok
+    try { v.currentTime = 0; } catch (e) {}
+    try {
+      if (document.pictureInPictureEnabled && v.requestPictureInPicture) {
+        await v.requestPictureInPicture();
+      } else if (v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode("picture-in-picture")) {
+        await v.play().catch(() => {});
+        v.pause();
+        v.webkitSetPresentationMode("picture-in-picture");
+      } else {
+        throw new Error("sem janelinha");
+      }
+      status("✅ Janelinha aberta. Abra o TikTok e toque no ▶ da janelinha quando for gravar.", "ok");
+    } catch (e) {
+      status("Este navegador não deixou abrir a janelinha daqui. Use Salvar vídeo no celular e abra no app Fotos ou Arquivos (veja a dica abaixo).", "erro");
+    }
+  };
+
+  // ---------- Salvar ----------
+  $("salvar").onclick = async () => {
+    if (!videoBlob) return;
+    try {
+      const downloads = window.claude && window.claude.use ? await window.claude.use("downloads") : null;
+      if (downloads) {
+        await downloads.save({ filename: videoNome, data: videoBlob });
+        status("✅ Vídeo salvo. Abra no app Fotos ou Arquivos e use a janelinha flutuante.", "ok");
+        return;
+      }
+      const a = document.createElement("a");
+      a.href = videoUrl; a.download = videoNome;
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) {
+      if (e && e.code === "declined") status("Salvamento cancelado.");
+      else status("Não consegui salvar por aqui. Tente de novo pelo Safari.", "erro");
+    }
+  };
+
+  // Desenha a prévia assim que a fonte carregar
+  atualizar(false);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => atualizar(false));
+})();
+</script>
+
+</body>
+</html>
