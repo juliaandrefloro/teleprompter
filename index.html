@@ -161,6 +161,12 @@ ol.steps li::before {
       </div>
       <p class="muted" id="orientDica"></p>
     </div>
+    <div class="field">
+      <div class="row"><label for="espera">Contagem antes de rolar</label><span class="val" id="esperaVal"></span></div>
+      <input type="range" id="espera" min="3" max="20" step="1">
+      <p class="muted">Tempo para você abrir o TikTok e apertar para gravar. A janelinha mostra a contagem.</p>
+    </div>
+    <label class="check" for="retomar">Não deixar o TikTok pausar o texto <input type="checkbox" id="retomar"></label>
     <label class="check" for="espelhar">Espelhar texto <input type="checkbox" id="espelhar"></label>
   </section>
 
@@ -181,9 +187,9 @@ ol.steps li::before {
     <ol class="steps">
       <li>Cole o roteiro, ajuste a velocidade e a letra, e confira na prévia.</li>
       <li>Toque em <b>Gerar vídeo do roteiro</b>.</li>
-      <li>Toque em <b>Flutuar por cima dos apps</b>. O vídeo vira uma janelinha.</li>
+      <li>Toque em <b>Flutuar por cima dos apps</b>. O vídeo vira uma janelinha e a contagem já começa.</li>
       <li>Abra o TikTok. Arraste a janelinha para perto da câmera de selfie. Dá para aumentar com dois dedos.</li>
-      <li>Toque no ▶ da janelinha e comece a gravar. O vídeo começa com uma contagem 3, 2, 1.</li>
+      <li>Durante a contagem, abra o TikTok e aperte para gravar. Quando a contagem termina, o texto começa a rolar sozinho.</li>
     </ol>
     <p class="tip"><b>Se o botão Flutuar não funcionar:</b> toque em <b>Salvar vídeo no celular</b>, abra o vídeo no app <b>Fotos</b> ou <b>Arquivos</b>, dê play e toque no ícone da janelinha flutuante (o quadradinho com a seta). Depois abra o TikTok.</p>
   </section>
@@ -194,14 +200,13 @@ ol.steps li::before {
 (() => {
   const $ = (id) => document.getElementById(id);
   const FPS = 30;
-  const ESPERA = 3;      // segundos de contagem antes de rolar
   const FIM = 2;         // segundos parado no final
   const LEITURA = 0.32;  // linha de leitura a 32% do topo
   const FORMATOS = { largo: [720, 288], compacto: [640, 480] };
   const EXEMPLO = "Oi, gente! Esse é o seu teleprompter flutuante.\n\nCole aqui o roteiro do seu vídeo, gere o vídeo e toque em Flutuar. Depois abra o TikTok.\n\nA janelinha fica por cima de tudo e não aparece na gravação.\n\nDeixe a janelinha perto da câmera para o olhar parecer natural.\n\nBoa gravação!";
 
   // ---------- Ajustes salvos no aparelho ----------
-  const padrao = { roteiro: EXEMPLO, vel: 6, letra: 44, formato: "largo", espelhar: false, orient: "empe" };
+  const padrao = { roteiro: EXEMPLO, vel: 6, letra: 44, formato: "largo", espelhar: false, orient: "empe", espera: 10, retomar: true };
   let cfg = { ...padrao };
   try { cfg = { ...padrao, ...JSON.parse(localStorage.getItem("teleprompter") || "{}") }; } catch (e) {}
   const salvarCfg = () => { try { localStorage.setItem("teleprompter", JSON.stringify(cfg)); } catch (e) {} };
@@ -232,12 +237,13 @@ ol.steps li::before {
     }
     const rolagem = Math.max(0, (linhas.length ? linhas[linhas.length - 1].y : 0));
     const segRolando = rolagem / pxPorSeg();
-    layout = { W, H, fonte, lh, linhas, rolagem, duracao: ESPERA + segRolando + FIM };
+    layout = { W, H, fonte, lh, linhas, rolagem, duracao: cfg.espera + segRolando + FIM };
   }
 
   // Desenha um quadro no instante t (segundos)
   function desenhar(ctx, t) {
     const { W, H, fonte, lh, linhas, rolagem, duracao } = layout;
+    const ESPERA = cfg.espera;
     const desloc = Math.min(rolagem, Math.max(0, (t - ESPERA) * pxPorSeg()));
     ctx.save();
     ctx.fillStyle = "#000";
@@ -347,6 +353,7 @@ ol.steps li::before {
     $("palavras").textContent = `${n} palavras`;
     $("velVal").textContent = `${cfg.vel} de 20`;
     $("letraVal").textContent = `${cfg.letra} px`;
+    $("esperaVal").textContent = `${cfg.espera} s`;
     document.querySelectorAll("[data-formato]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.formato === cfg.formato)));
     document.querySelectorAll("[data-orient]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.orient === cfg.orient)));
     $("orientDica").textContent = deitado()
@@ -362,10 +369,14 @@ ol.steps li::before {
   $("vel").value = cfg.vel;
   $("letra").value = cfg.letra;
   $("espelhar").checked = cfg.espelhar;
+  $("espera").value = cfg.espera;
+  $("retomar").checked = cfg.retomar;
   roteiro.addEventListener("input", () => { cfg.roteiro = roteiro.value; atualizar(); });
   $("vel").addEventListener("input", (e) => { cfg.vel = +e.target.value; atualizar(); });
   $("letra").addEventListener("input", (e) => { cfg.letra = +e.target.value; atualizar(); });
   $("espelhar").addEventListener("change", (e) => { cfg.espelhar = e.target.checked; atualizar(); });
+  $("espera").addEventListener("input", (e) => { cfg.espera = +e.target.value; atualizar(); });
+  $("retomar").addEventListener("change", (e) => { cfg.retomar = e.target.checked; salvarCfg(); });
   document.querySelectorAll("[data-formato]").forEach((b) => (b.onclick = () => { cfg.formato = b.dataset.formato; atualizar(); }));
   document.querySelectorAll("[data-orient]").forEach((b) => (b.onclick = () => { cfg.orient = b.dataset.orient; atualizar(); }));
   $("limpar").onclick = () => { roteiro.value = ""; cfg.roteiro = ""; atualizar(); roteiro.focus(); };
@@ -468,21 +479,51 @@ ol.steps li::before {
   };
 
   // ---------- Flutuar ----------
+  // 1) Som "ambiente": avisa o iPhone que esta página toca junto com outros apps,
+  //    para o TikTok não interromper a janelinha quando abre a câmera.
+  function somAmbiente() {
+    try { if (navigator.audioSession) navigator.audioSession.type = "ambient"; } catch (e) {}
+  }
+  somAmbiente();
+
+  // 2) Se o sistema pausar sozinho (ex.: o TikTok começou a gravar), a janelinha volta a rolar.
+  const v = $("video");
+  let querRolar = false;      // a pessoa quer o texto rolando
+  let pausaPedidaEm = 0;      // quando a própria pessoa tocou em pausar
+  if ("mediaSession" in navigator) {
+    try { navigator.mediaSession.setActionHandler("play", () => { querRolar = true; v.play().catch(() => {}); }); } catch (e) {}
+    try { navigator.mediaSession.setActionHandler("pause", () => { querRolar = false; pausaPedidaEm = Date.now(); v.pause(); }); } catch (e) {}
+  }
+  v.addEventListener("play", () => { querRolar = true; });
+  v.addEventListener("ended", () => { querRolar = false; });
+  v.addEventListener("pause", () => {
+    if (!cfg.retomar || v.ended || Date.now() - pausaPedidaEm < 1500) return;
+    let tentativas = 0;
+    const tentar = () => {
+      if (!querRolar || !v.paused || v.ended || Date.now() - pausaPedidaEm < 1500) return;
+      somAmbiente();
+      v.play().catch(() => {});
+      if (++tentativas < 40) setTimeout(tentar, 500);
+    };
+    setTimeout(tentar, 250);
+  });
+
   $("flutuar").onclick = async () => {
-    const v = $("video");
     v.muted = true; // sem som: não atrapalha a gravação do TikTok
+    somAmbiente();
     try { v.currentTime = 0; } catch (e) {}
     try {
+      // já começa rolando: a contagem dá tempo de abrir o TikTok
+      await v.play().catch(() => {});
+      querRolar = true;
       if (document.pictureInPictureEnabled && v.requestPictureInPicture) {
         await v.requestPictureInPicture();
       } else if (v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode("picture-in-picture")) {
-        await v.play().catch(() => {});
-        v.pause();
         v.webkitSetPresentationMode("picture-in-picture");
       } else {
         throw new Error("sem janelinha");
       }
-      status("✅ Janelinha aberta. Abra o TikTok e toque no ▶ da janelinha quando for gravar.", "ok");
+      status(`✅ Janelinha aberta e contando ${cfg.espera} s. Abra o TikTok agora e aperte para gravar.`, "ok");
     } catch (e) {
       status("Este navegador não deixou abrir a janelinha daqui. Use Salvar vídeo no celular e abra no app Fotos ou Arquivos (veja a dica abaixo).", "erro");
     }
